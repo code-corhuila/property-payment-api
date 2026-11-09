@@ -1,6 +1,7 @@
 package co.edu.corhuila.property.payment.domain.model;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 
 /**
  * A ledger entry that reverses an approved Pago (02-domain/entities-and-rules.md):
@@ -17,13 +18,19 @@ public class Reembolso {
     private final Instant createdAt;
 
     private Reembolso(ReembolsoId id, PagoId pagoId, Money monto, String transaccionId,
-                      String idempotencyKey) {
+                      String idempotencyKey, Instant createdAt) {
         this.id = id;
         this.pagoId = pagoId;
         this.monto = monto;
         this.transaccionId = transaccionId;
         this.idempotencyKey = idempotencyKey;
-        this.createdAt = Instant.now();
+        this.createdAt = createdAt;
+    }
+
+    /** Rebuilds a Reembolso the persistence adapter read. It never changes after it is stored. */
+    public static Reembolso restore(ReembolsoId id, PagoId pagoId, Money monto, String transaccionId,
+                                    String idempotencyKey, Instant createdAt) {
+        return new Reembolso(id, pagoId, monto, transaccionId, idempotencyKey, createdAt);
     }
 
     /**
@@ -43,7 +50,8 @@ public class Reembolso {
         if (idempotencyKey == null || idempotencyKey.length() < 8 || idempotencyKey.length() > 128) {
             throw new DomainException("La idempotencyKey es requerida, de 8 a 128 caracteres");
         }
-        return new Reembolso(ReembolsoId.nueva(), pago.getId(), pago.getMonto(), transaccionId, idempotencyKey);
+        return new Reembolso(ReembolsoId.nueva(), pago.getId(), pago.getMonto(), transaccionId, idempotencyKey,
+                Instant.now().truncatedTo(ChronoUnit.MICROS));
     }
 
     public ReembolsoId getId() { return id; }
