@@ -15,8 +15,9 @@ payment-core/       domain + application — NO Spring dependency
   application/port/in/     what the service offers
   application/port/out/    what it needs
   application/usecase/     one use case per business operation
-payment-adapters/   Spring Web adapters (and persistence, later)
+payment-adapters/   Spring Web adapters and the ledger
   adapter/in/http/         RS256 verifier, auth and correlation filters, error envelope, /health
+  adapter/out/persistence/ where Pagos, Reembolsos and their outbox events are stored
 payment-app/        Spring Boot application: the composition root
 deploy/             Dockerfile and this service's compose file
 ```

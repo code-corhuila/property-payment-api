@@ -1,6 +1,7 @@
 package co.edu.corhuila.property.payment.domain.model;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 /**
@@ -23,7 +24,7 @@ public class Pago {
 
     private Pago(PagoId id, UUID reservaId, UUID usuarioId, Money monto, MetodoPago metodoPago,
                   EstadoPago estado, String transaccionId, String motivoRechazo,
-                  String idempotencyKey) {
+                  String idempotencyKey, Instant createdAt) {
         if (reservaId == null || usuarioId == null || monto == null || metodoPago == null) {
             throw new DomainException("reservaId, usuarioId, monto y metodoPago son requeridos");
         }
@@ -44,7 +45,20 @@ public class Pago {
         this.transaccionId = transaccionId;
         this.motivoRechazo = motivoRechazo;
         this.idempotencyKey = idempotencyKey;
-        this.createdAt = Instant.now();
+        this.createdAt = createdAt;
+    }
+
+    /** Microseconds: the precision PostgreSQL keeps, so a stored Pago reads back equal. */
+    private static Instant now() {
+        return Instant.now().truncatedTo(ChronoUnit.MICROS);
+    }
+
+    /** Rebuilds a Pago the persistence adapter read. A Pago never changes after it is stored. */
+    public static Pago restore(PagoId id, UUID reservaId, UUID usuarioId, Money monto, MetodoPago metodoPago,
+                               EstadoPago estado, String transaccionId, String motivoRechazo,
+                               String idempotencyKey, Instant createdAt) {
+        return new Pago(id, reservaId, usuarioId, monto, metodoPago, estado, transaccionId, motivoRechazo,
+                idempotencyKey, createdAt);
     }
 
     public static Pago aprobado(UUID reservaId, UUID usuarioId, Money monto, MetodoPago metodoPago,
@@ -53,7 +67,7 @@ public class Pago {
             throw new DomainException("Un pago APROBADO requiere el transaccionId de la pasarela");
         }
         return new Pago(PagoId.nueva(), reservaId, usuarioId, monto, metodoPago,
-                EstadoPago.APROBADO, transaccionId, null, idempotencyKey);
+                EstadoPago.APROBADO, transaccionId, null, idempotencyKey, now());
     }
 
     public static Pago rechazado(UUID reservaId, UUID usuarioId, Money monto, MetodoPago metodoPago,
@@ -62,7 +76,7 @@ public class Pago {
             throw new DomainException("Un pago RECHAZADO requiere su motivoRechazo");
         }
         return new Pago(PagoId.nueva(), reservaId, usuarioId, monto, metodoPago,
-                EstadoPago.RECHAZADO, null, motivoRechazo, idempotencyKey);
+                EstadoPago.RECHAZADO, null, motivoRechazo, idempotencyKey, now());
     }
 
     public boolean fueAprobado() {
