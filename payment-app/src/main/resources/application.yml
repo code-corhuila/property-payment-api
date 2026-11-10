@@ -13,3 +13,8 @@ logging:
   structured:
     format:
       console: ecs              # one JSON object per line; the MDC adds correlationId
+
+payment:
+  # postgres (default) or memory. memory is for tests and local development only, never an
+  # environment (norm 5.5.2): nothing persists.
+  persistence: ${PERSISTENCE:postgres}
