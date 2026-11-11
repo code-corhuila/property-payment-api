@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import co.edu.corhuila.property.payment.application.port.out.PasarelaPagoPort;
 import co.edu.corhuila.property.payment.application.port.out.PasarelaPagoPort.Aprobado;
 import co.edu.corhuila.property.payment.application.port.out.PasarelaPagoPort.Fallido;
 import co.edu.corhuila.property.payment.application.port.out.PasarelaPagoPort.Indeterminado;
@@ -163,5 +164,14 @@ class StripePasarelaTest {
         var limits = new StripePasarela.Limits(Duration.ofSeconds(1), Duration.ofSeconds(2), 1);
         var e = assertThrows(IllegalStateException.class, () -> new StripePasarela("http://x", " ", limits, breaker));
         assertTrue(e.getMessage().contains("STRIPE_SECRET_KEY"));
+    }
+
+    @Test
+    void theAvailabilityIsTheStateOfTheCircuit() {
+        assertEquals(PasarelaPagoPort.Disponibilidad.OK, stripe.disponibilidad());
+        breaker.transitionToOpenState();
+        assertEquals(PasarelaPagoPort.Disponibilidad.CAIDA, stripe.disponibilidad());
+        breaker.transitionToHalfOpenState();
+        assertEquals(PasarelaPagoPort.Disponibilidad.DEGRADADA, stripe.disponibilidad());
     }
 }
