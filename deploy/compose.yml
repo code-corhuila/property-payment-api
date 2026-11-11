@@ -19,6 +19,24 @@ services:
     expose: ["3003"]
     networks: [platform]
 
+  # The outbox relay (ADR-005; norm 5.3.11): the same image, another process. It publishes
+  # the rows of payment.outbox_event to the exchange pagos of RabbitMQ as the broker user
+  # payment; a row is marked only after the broker confirms it. The events of Payment have no
+  # consumer in MVP 1 and are published anyway (ADR-013). One per environment; no port.
+  payment-relay:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    command: ["--outbox-relay"]
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/${PG_DATABASE:?set PG_DATABASE}
+      DATABASE_USER: payment_app
+      DATABASE_PASSWORD: ${PAYMENT_APP_PASSWORD:?set PAYMENT_APP_PASSWORD}
+      BROKER_HOST: rabbitmq
+      BROKER_USER: payment
+      BROKER_PASSWORD: ${PAYMENT_BROKER_PASSWORD:?set PAYMENT_BROKER_PASSWORD}
+    networks: [platform]
+
 networks:
   platform:
     name: platform

@@ -38,3 +38,14 @@ payment:
     circuit:
       failures: ${PASARELA_CB_FAILURES:5}         # failed calls in a row that open the circuit
       open-ms: ${PASARELA_CB_OPEN_MS:30000}       # how long it stays open before one trial call
+  # The outbox relay (--outbox-relay): one per environment, as the broker user payment.
+  relay:
+    batch-size: ${OUTBOX_BATCH_SIZE:100}
+    poll-ms: ${OUTBOX_POLL_MS:1000}
+    pool-max: ${OUTBOX_POOL_MAX:2}
+  broker:
+    host: ${BROKER_HOST:rabbitmq}
+    port: ${BROKER_PORT:5672}
+    user: ${BROKER_USER:payment}
+    password: ${BROKER_PASSWORD:}
+    confirm-timeout-ms: ${BROKER_CONFIRM_TIMEOUT_MS:5000}

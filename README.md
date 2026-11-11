@@ -62,6 +62,29 @@ TEST_DATABASE_URL=jdbc:postgresql://localhost:55434/property TEST_DATABASE_USER=
 scripts/test-db.sh down
 ```
 
+### The outbox relay
+
+Every `Pago` recorded writes `PagoAprobado` or `PagoRechazado` to `payment.outbox_event` in the
+same transaction (ADR-005). The relay is a process apart, from the same jar (norm 5.3.11):
+
+```bash
+java -jar payment-app/target/payment-app-0.1.0.jar --outbox-relay
+```
+
+It has no web server. It reads the unpublished rows oldest first (`OUTBOX_BATCH_SIZE`,
+`OUTBOX_POLL_MS`), publishes each to the exchange `pagos` of RabbitMQ with the routing key of
+`02-domain/domain-events.md` (`pagos.pago.aprobado`, `pagos.pago.rechazado`) as a persistent
+message whose `messageId` is the `eventId`, and marks the row only after the broker confirms
+it. No context consumes these events in MVP 1; they are published anyway (ADR-013). With the
+broker down the rows wait and go out when it is back; a crash between the confirm and the
+mark publishes the event again (at least once). It connects as the broker user `payment`
+(`BROKER_*`). In the platform it is the service `payment-relay` of `deploy/compose.yml`.
+
+**One replica per environment** (`05-architecture/deployment.md`, ADR-005): the relay reads the
+outbox in order without locking it. If it were ever scaled out, that read would need
+`SELECT … FOR UPDATE SKIP LOCKED` inside the transaction that publishes and marks, so two relays
+never take the same rows.
+
 The image:
 
 ```bash
