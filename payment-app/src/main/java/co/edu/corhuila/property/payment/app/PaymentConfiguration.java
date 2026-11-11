@@ -4,13 +4,13 @@ import co.edu.corhuila.property.payment.adapter.in.http.AuthFilter;
 import co.edu.corhuila.property.payment.adapter.in.http.CorrelationFilter;
 import co.edu.corhuila.property.payment.adapter.in.http.Rs256Verifier;
 import co.edu.corhuila.property.payment.adapter.out.persistence.InMemoryPagoRepository;
+import co.edu.corhuila.property.payment.adapter.out.persistence.JdbcPagoRepository;
 import co.edu.corhuila.property.payment.application.port.out.PagoRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -25,13 +25,24 @@ import org.springframework.core.Ordered;
 public class PaymentConfiguration {
 
     /**
-     * In memory ONLY when PERSISTENCE=memory is set, for tests and local development:
-     * never by default (norm 5.5.2). The JDBC adapter of the schema payment comes next.
+     * PERSISTENCE=postgres (the default) needs DATABASE_URL, DATABASE_USER (payment_app
+     * in the platform) and DATABASE_PASSWORD: without them the service does not start.
+     * PERSISTENCE=memory is for tests and local development only (norm 5.5.2).
      */
     @Bean
-    @ConditionalOnProperty(name = "payment.persistence", havingValue = "memory")
-    PagoRepository pagoRepository() {
-        return new InMemoryPagoRepository();
+    Storage storage(@Value("${payment.persistence:postgres}") String persistence,
+                    @Value("${payment.database.url:}") String url,
+                    @Value("${payment.database.user:}") String user,
+                    @Value("${payment.database.password:}") String password,
+                    @Value("${payment.database.pool-max:10}") int poolMax,
+                    @Value("${payment.database.statement-timeout-ms:5000}") int statementTimeoutMs) {
+        return Storage.connect(persistence, url, user, password, poolMax, statementTimeoutMs);
+    }
+
+    @Bean
+    PagoRepository pagoRepository(Storage storage) {
+        return storage.inMemory() ? new InMemoryPagoRepository()
+                : new JdbcPagoRepository(storage.jdbc(), storage.tx());
     }
 
     /**
