@@ -8,6 +8,7 @@ import co.edu.corhuila.property.payment.adapter.out.persistence.InMemoryPagoRepo
 import co.edu.corhuila.property.payment.adapter.out.persistence.JdbcPagoRepository;
 import co.edu.corhuila.property.payment.application.port.out.PagoRepository;
 import co.edu.corhuila.property.payment.application.port.out.PasarelaPagoPort;
+import co.edu.corhuila.property.payment.application.usecase.PagoService;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -65,6 +66,11 @@ public class PaymentConfiguration {
                 .automaticTransitionFromOpenToHalfOpenEnabled(false).build());
         return new StripePasarela(url, secretKey,
                 new StripePasarela.Limits(Duration.ofMillis(timeoutMs), Duration.ofMillis(totalMs), maxAttempts), breaker);
+    }
+
+    @Bean
+    PagoService pagoService(PagoRepository pagos, PasarelaPagoPort pasarela) {
+        return new PagoService(pagos, pasarela);
     }
 
     @Bean
