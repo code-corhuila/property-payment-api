@@ -17,7 +17,7 @@ payment-core/       domain + application — NO Spring dependency
   application/usecase/     one use case per business operation
 payment-adapters/   Spring Web adapters and the ledger
   adapter/in/http/         RS256 verifier, auth and correlation filters, error envelope, /health
-  adapter/out/persistence/ where Pagos, Reembolsos and their outbox events are stored
+  adapter/out/persistence/ the schema payment (JDBC); an in-memory twin only with PERSISTENCE=memory
 payment-app/        Spring Boot application: the composition root
 deploy/             Dockerfile and this service's compose file
 ```
@@ -43,9 +43,13 @@ Without Maven installed:
 docker run --rm -v "$PWD":/app -w /app maven:3.9-eclipse-temurin-21 mvn -B verify
 ```
 
-### Integration tests
+### Storage and the integration tests
 
-The integration tests run against the real engine with the schema of
+The service keeps the ledger, Pagos, Reembolsos, their keys and their outbox events, in
+the schema `payment`, as `payment_app`, which may only read and insert there: a Pago is
+never updated (AGGR-INV-004). Without `DATABASE_URL` it does not start; the in-memory
+adapters run only with `PERSISTENCE=memory`, for the HTTP tests or a local trial, never
+in an environment (norm 5.5.2). The integration tests run against the real engine with the schema of
 `property-payment-db` applied, as `payment_app`, and only when `TEST_DATABASE_URL` is
 set; otherwise they are skipped (Annex C). CI prepares that database on every Pull
 Request. Locally, with `property-payment-db` cloned as a sibling (or `PAYMENT_DB_DIR`):

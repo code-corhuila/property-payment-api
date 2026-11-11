@@ -9,6 +9,9 @@ server:
 spring:
   lifecycle:
     timeout-per-shutdown-phase: 20s
+  autoconfigure:
+    # The pool is built in PaymentConfiguration (the composition root), not by auto-configuration.
+    exclude: org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
 logging:
   structured:
     format:
@@ -16,5 +19,12 @@ logging:
 
 payment:
   # postgres (default) or memory. memory is for tests and local development only, never an
-  # environment (norm 5.5.2): nothing persists.
+  # environment (norm 5.5.2): nothing persists. postgres without DATABASE_URL does not start.
   persistence: ${PERSISTENCE:postgres}
+  database:
+    # The schema lives in property-payment-db; this service never migrates it.
+    url: ${DATABASE_URL:}
+    user: ${DATABASE_USER:}
+    password: ${DATABASE_PASSWORD:}
+    pool-max: ${DB_POOL_MAX:10}
+    statement-timeout-ms: ${DB_STATEMENT_TIMEOUT_MS:5000}
