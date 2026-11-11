@@ -1,6 +1,8 @@
 package co.edu.corhuila.property.payment.adapter.in.http;
 
 import co.edu.corhuila.property.payment.adapter.in.http.ApiError.ValidationException;
+import co.edu.corhuila.property.payment.application.port.in.AccessDeniedException;
+import co.edu.corhuila.property.payment.application.port.in.NotAuthenticatedException;
 import co.edu.corhuila.property.payment.domain.model.DomainException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,6 +42,16 @@ public class ErrorHandler {
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     ResponseEntity<ApiError> method(HttpRequestMethodNotSupportedException e) {
         return respond(HttpStatus.METHOD_NOT_ALLOWED, ApiError.of(ApiError.NOT_FOUND, "method not allowed on this route"));
+    }
+
+    @ExceptionHandler(NotAuthenticatedException.class)
+    ResponseEntity<ApiError> notAuthenticated(NotAuthenticatedException e) {
+        return respond(HttpStatus.UNAUTHORIZED, ApiError.of(ApiError.UNAUTHORIZED, e.getMessage()));
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    ResponseEntity<ApiError> forbidden(AccessDeniedException e) {
+        return respond(HttpStatus.FORBIDDEN, ApiError.of(ApiError.FORBIDDEN, e.getMessage()));
     }
 
     /** A Pago and a Reembolso have no transitions: every domain rule is a business rule (INV-004 to INV-006). */
