@@ -3,9 +3,11 @@ package co.edu.corhuila.property.payment.adapter.in.http;
 import co.edu.corhuila.property.payment.adapter.in.http.ApiError.FieldError;
 import co.edu.corhuila.property.payment.adapter.in.http.ApiError.ValidationException;
 import co.edu.corhuila.property.payment.adapter.in.http.PagoViews.PagoResponse;
+import co.edu.corhuila.property.payment.adapter.in.http.PagoViews.ReembolsoResponse;
 import co.edu.corhuila.property.payment.application.port.in.PagoUseCases;
 import co.edu.corhuila.property.payment.application.port.in.PagoUseCases.CobrarCommand;
 import co.edu.corhuila.property.payment.application.port.in.PagoUseCases.Cobro;
+import co.edu.corhuila.property.payment.application.port.in.PagoUseCases.Reversion;
 import co.edu.corhuila.property.payment.domain.model.MetodoPago;
 import jakarta.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
@@ -14,6 +16,7 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -36,9 +39,30 @@ public class PagoController {
     }
 
     private final PagoUseCases.Cobrar cobrar;
+    private final PagoUseCases.Reembolsar reembolsar;
 
-    public PagoController(PagoUseCases.Cobrar cobrar) {
+    public PagoController(PagoUseCases.Cobrar cobrar, PagoUseCases.Reembolsar reembolsar) {
         this.cobrar = cobrar;
+        this.reembolsar = reembolsar;
+    }
+
+    /**
+     * E-21, compensation of step cobrar: the workflow sends <sagaId>:cobrar:compensar.
+     * No body: a Reembolso reverses the Pago in full (INV-006).
+     */
+    @PostMapping("/{id}/reembolsos")
+    public ResponseEntity<ReembolsoResponse> reembolsar(@PathVariable String id,
+                                                        @RequestHeader(name = "Idempotency-Key", required = false) String key,
+                                                        HttpServletRequest request) {
+        UUID pagoId = PagoViews.requireId(id, "id");
+        if (!PagoViews.validKey(key)) {
+            throw new ValidationException("the request has invalid fields",
+                    List.of(new FieldError("Idempotency-Key", "header required, 8 to 128 characters")));
+        }
+        Reversion result = reembolsar.reembolsar(PagoViews.caller(request), pagoId, key);
+        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK)
+                .header("Location", "/api/v1/pagos/" + pagoId + "/reembolsos/" + result.reembolso().getId().value())
+                .body(ReembolsoResponse.of(result.reembolso()));
     }
 
     /** E-20, step cobrar. A rejected charge is 201 too: it is a recorded result. */
