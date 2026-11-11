@@ -27,6 +27,11 @@
       <artifactId>spring-boot-starter-jdbc</artifactId>
     </dependency>
     <dependency>
+      <!-- the outbox relay publishes to RabbitMQ (ADR-013); version managed by Spring Boot -->
+      <groupId>com.rabbitmq</groupId>
+      <artifactId>amqp-client</artifactId>
+    </dependency>
+    <dependency>
       <!-- the Circuit Breaker around the gateway (ADR-003); the core module only, no Spring wiring -->
       <groupId>io.github.resilience4j</groupId>
       <artifactId>resilience4j-circuitbreaker</artifactId>
