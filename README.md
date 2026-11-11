@@ -18,6 +18,7 @@ payment-core/       domain + application — NO Spring dependency
 payment-adapters/   Spring Web adapters and the ledger
   adapter/in/http/         RS256 verifier, auth and correlation filters, error envelope, /health
   adapter/out/persistence/ the schema payment (JDBC); an in-memory twin only with PERSISTENCE=memory
+  adapter/out/pasarela/    Stripe over HTTP, behind a Circuit Breaker (ADR-003)
 payment-app/        Spring Boot application: the composition root
 deploy/             Dockerfile and this service's compose file
 ```
