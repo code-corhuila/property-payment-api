@@ -38,4 +38,13 @@ public final class PagoUseCases {
     public interface Reembolsar {
         Reversion reembolsar(Caller caller, UUID pagoId, String idempotencyKey);
     }
+
+    /** E-07, E-08 and E-22: the guest who paid, an ADMIN or a service credential. */
+    public interface ConsultarPagos {
+        Pago porId(Caller caller, UUID pagoId);
+
+        Pago porReserva(Caller caller, UUID reservaId);
+
+        Reembolso reembolso(Caller caller, UUID pagoId, UUID reembolsoId);
+    }
 }

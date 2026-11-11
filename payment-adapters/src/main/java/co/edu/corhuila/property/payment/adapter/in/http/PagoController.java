@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -40,10 +41,33 @@ public class PagoController {
 
     private final PagoUseCases.Cobrar cobrar;
     private final PagoUseCases.Reembolsar reembolsar;
+    private final PagoUseCases.ConsultarPagos consultar;
 
-    public PagoController(PagoUseCases.Cobrar cobrar, PagoUseCases.Reembolsar reembolsar) {
+    public PagoController(PagoUseCases.Cobrar cobrar, PagoUseCases.Reembolsar reembolsar,
+                          PagoUseCases.ConsultarPagos consultar) {
         this.cobrar = cobrar;
         this.reembolsar = reembolsar;
+        this.consultar = consultar;
+    }
+
+    /** E-07. */
+    @GetMapping("/{id}")
+    public PagoResponse porId(@PathVariable String id, HttpServletRequest request) {
+        return PagoResponse.of(consultar.porId(PagoViews.caller(request), PagoViews.requireId(id, "id")));
+    }
+
+    /** E-08: the payment line of the reservation detail, and the read the workflow settles with. */
+    @GetMapping("/por-reserva/{reservaId}")
+    public PagoResponse porReserva(@PathVariable String reservaId, HttpServletRequest request) {
+        return PagoResponse.of(consultar.porReserva(PagoViews.caller(request), PagoViews.requireId(reservaId, "reservaId")));
+    }
+
+    /** E-22. */
+    @GetMapping("/{id}/reembolsos/{reembolsoId}")
+    public ReembolsoResponse reembolso(@PathVariable String id, @PathVariable String reembolsoId,
+                                       HttpServletRequest request) {
+        return ReembolsoResponse.of(consultar.reembolso(PagoViews.caller(request), PagoViews.requireId(id, "id"),
+                PagoViews.requireId(reembolsoId, "reembolsoId")));
     }
 
     /**
