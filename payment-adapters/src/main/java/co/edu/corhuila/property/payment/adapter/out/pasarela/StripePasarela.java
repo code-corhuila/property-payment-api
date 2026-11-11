@@ -42,6 +42,19 @@ public class StripePasarela implements PasarelaPagoPort {
     private final Limits limits;
     private final CircuitBreaker breaker;
 
+    /**
+     * The state of the circuit (ADR-003): CLOSED is available, HALF_OPEN lets one trial call
+     * through, OPEN fails every charge fast without calling Stripe.
+     */
+    @Override
+    public Disponibilidad disponibilidad() {
+        return switch (breaker.getState()) {
+            case OPEN, FORCED_OPEN -> Disponibilidad.CAIDA;
+            case HALF_OPEN -> Disponibilidad.DEGRADADA;
+            default -> Disponibilidad.OK;
+        };
+    }
+
     public StripePasarela(String baseUrl, String secretKey, Limits limits, CircuitBreaker breaker) {
         if (secretKey == null || secretKey.isBlank()) {
             throw new IllegalStateException("STRIPE_SECRET_KEY is required: the key of the Stripe test account, "

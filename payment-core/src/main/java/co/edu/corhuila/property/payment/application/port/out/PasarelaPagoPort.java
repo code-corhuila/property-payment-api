@@ -35,4 +35,12 @@ public interface PasarelaPagoPort {
 
     /** Refunds the full amount of an approved charge (INV-006). */
     Reversion reembolsar(String transaccionPago, long montoCents, String idempotencyKey);
+
+    /** Whether charges can reach the gateway now, as /health reports it (payment-service.yaml). */
+    enum Disponibilidad { OK, DEGRADADA, CAIDA }
+
+    /** A gateway without a circuit is always available to try. */
+    default Disponibilidad disponibilidad() {
+        return Disponibilidad.OK;
+    }
 }
