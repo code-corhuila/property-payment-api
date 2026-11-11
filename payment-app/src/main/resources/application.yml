@@ -28,3 +28,13 @@ payment:
     password: ${DATABASE_PASSWORD:}
     pool-max: ${DB_POOL_MAX:10}
     statement-timeout-ms: ${DB_STATEMENT_TIMEOUT_MS:5000}
+  pasarela:
+    # Stripe in test mode (ADR-003). The key lives only in the variables file of the environment.
+    url: ${STRIPE_URL:https://api.stripe.com}
+    secret-key: ${STRIPE_SECRET_KEY:}
+    timeout-ms: ${PASARELA_TIMEOUT_MS:3000}       # each call
+    total-ms: ${PASARELA_TOTAL_MS:8000}           # the whole operation, below the workflow's 10 s
+    max-attempts: ${PASARELA_MAX_ATTEMPTS:2}      # the same idempotency key on every attempt
+    circuit:
+      failures: ${PASARELA_CB_FAILURES:5}         # failed calls in a row that open the circuit
+      open-ms: ${PASARELA_CB_OPEN_MS:30000}       # how long it stays open before one trial call
