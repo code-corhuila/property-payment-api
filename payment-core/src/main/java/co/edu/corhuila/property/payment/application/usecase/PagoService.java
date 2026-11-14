@@ -1,10 +1,12 @@
 package co.edu.corhuila.property.payment.application.usecase;
 
+import co.edu.corhuila.property.payment.application.port.in.AccessDeniedException;
 import co.edu.corhuila.property.payment.application.port.in.Caller;
 import co.edu.corhuila.property.payment.application.port.in.CobroIndeterminadoException;
 import co.edu.corhuila.property.payment.application.port.in.PagoNoEncontradoException;
 import co.edu.corhuila.property.payment.application.port.in.PagoUseCases.Cobrar;
 import co.edu.corhuila.property.payment.application.port.in.PagoUseCases.CobrarCommand;
+import co.edu.corhuila.property.payment.application.port.in.PagoUseCases.ConsultarPagos;
 import co.edu.corhuila.property.payment.application.port.in.PagoUseCases.Cobro;
 import co.edu.corhuila.property.payment.application.port.in.PagoUseCases.Reembolsar;
 import co.edu.corhuila.property.payment.application.port.in.PagoUseCases.Reversion;
@@ -20,7 +22,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /** The use cases of the ledger. It orchestrates; the rules live in Pago and Reembolso. */
-public class PagoService implements Cobrar, Reembolsar {
+public class PagoService implements Cobrar, Reembolsar, ConsultarPagos {
 
     private final PagoRepository pagos;
     private final PasarelaPagoPort pasarela;
@@ -87,5 +89,34 @@ public class PagoService implements Cobrar, Reembolsar {
         PagoRepository.Created<Reembolso> stored = pagos.createReembolso(
                 Reembolso.crear(pago, reembolsado.transaccionId(), idempotencyKey));
         return new Reversion(stored.value(), stored.created());
+    }
+
+    /** HU-PAY-003 scenario 3. A Pago of another guest is 403; one that does not exist, 404. */
+    @Override
+    public Pago porId(Caller caller, UUID pagoId) {
+        return readable(caller, pagos.findById(pagoId));
+    }
+
+    /** E-08: 404 means no Pago is recorded for the Reserva, not that no charge was attempted. */
+    @Override
+    public Pago porReserva(Caller caller, UUID reservaId) {
+        return readable(caller, pagos.findByReserva(reservaId));
+    }
+
+    /** E-22: same permission as the Pago it reverses; a Reembolso of another Pago is 404. */
+    @Override
+    public Reembolso reembolso(Caller caller, UUID pagoId, UUID reembolsoId) {
+        porId(caller, pagoId);
+        return pagos.findReembolso(reembolsoId).filter(r -> r.getPagoId().value().equals(pagoId))
+                .orElseThrow(() -> new PagoNoEncontradoException("the refund does not exist"));
+    }
+
+    /** pagos:read is own-only for a person; an ADMIN and a service read any (security-policy.md). */
+    private static Pago readable(Caller caller, Optional<Pago> found) {
+        Pago pago = found.orElseThrow(() -> new PagoNoEncontradoException("the payment does not exist"));
+        if (!caller.service() && !caller.isAdmin() && !caller.personId().equals(pago.getUsuarioId())) {
+            throw new AccessDeniedException("the payment belongs to another guest");
+        }
+        return pago;
     }
 }
