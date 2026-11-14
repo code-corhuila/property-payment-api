@@ -1,0 +1,398 @@
+openapi: 3.0.3
+info:
+  title: Payment Service API
+  version: 3.0.0
+  description: |
+    Supporting Domain — idempotent charge and append-only ledger of Pagos and
+    Reembolsos. See 02-domain/domain-map.md and
+    02-domain/entities-and-rules.md.
+
+    Payment is a **participant** of the Saga `reservar` (ADR-009):
+    property-workflow charges in step `cobrar` (`POST /pagos`) and refunds
+    as its compensation (`POST /pagos/{id}/reembolsos`). Both are **service
+    credential only**: a person's token gets `403 FORBIDDEN`
+    (07-api/guidelines.md, D-C12 and D-C14). A person only reads their own
+    Pago, for the reservation detail (12-ux-ui/navigation-map.md).
+
+    ## The charge is synchronous
+    Payment calls the payment gateway (Stripe, test mode) inside the request,
+    behind a Circuit Breaker (ADR-003), and answers with the Pago already
+    resolved. There is no webhook and no pending Pago. Its time limit
+    towards the gateway is shorter than the workflow's limit for the step.
+
+    ## Idempotency
+    The `Idempotency-Key` of each creation is stored in the same transaction
+    as the Pago or the Reembolso (INV-004), and is also sent to the gateway
+    as its own idempotency key: a retried step never charges twice.
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Through the API Gateway, in `develop` (05-architecture/deployment.md)
+  - url: http://payment-api:3003/api/v1
+    description: Inside the network `platform` — how property-workflow reaches it
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Pagos
+    description: Charge and reading of a Pago
+  - name: Reembolsos
+    description: Reversal of an approved Pago
+  - name: Health
+    description: Health check of the service
+
+paths:
+  /health:
+    servers:
+      - url: http://payment-api:3003
+        description: At the root of the service, outside `/api/v1` and not routed by the gateway
+    get:
+      summary: Health check
+      description: Answers without a token. A dependency that is down is reported inside the `200` body (D-C6).
+      operationId: getHealth
+      tags: [Health]
+      security: []
+      responses:
+        '200':
+          description: The service is running
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok, degraded]
+                  timestamp:
+                    $ref: './_shared.yaml#/components/schemas/Timestamp'
+                  dependencies:
+                    type: object
+                    properties:
+                      database:
+                        type: string
+                        enum: [ok, degraded, down]
+                      broker:
+                        type: string
+                        enum: [ok, degraded, down]
+                      paymentGateway:
+                        type: string
+                        enum: [ok, degraded, down]
+                        description: >
+                          State of the Circuit Breaker (ADR-003). `down` means
+                          the circuit is OPEN: charges fail fast.
+              example:
+                status: ok
+                timestamp: '2024-01-15T10:30:00Z'
+                dependencies:
+                  database: ok
+                  broker: ok
+                  paymentGateway: ok
+
+  /pagos:
+    post:
+      summary: Charge a Reserva (step `cobrar`)
+      description: >
+        **Service credential only.** Charges `montoCents` with the payment
+        method the guest chose and records the result as a Pago, APROBADO or
+        RECHAZADO. A rejected charge is a recorded result, not an error: the
+        answer is still `201`, and the workflow treats the step as failed and
+        compensates (ADR-009, rule 6). When the circuit is OPEN or the
+        connection is refused before anything was sent, the Pago is recorded
+        RECHAZADO with `PASARELA_NO_DISPONIBLE`. The amount is the one
+        Booking answered in step `crear-reserva` (INV-005).
+      operationId: crearPago
+      tags: [Pagos]
+      parameters:
+        - $ref: './_shared.yaml#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrearPagoRequest'
+      responses:
+        '200':
+          description: >
+            The `Idempotency-Key` was already used: the Pago it created is
+            returned and the gateway is not called again (INV-004).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagoResponse'
+        '201':
+          description: Pago recorded — read `estado` to know whether the charge was approved
+          headers:
+            Location:
+              description: Route of the Pago created
+              schema:
+                type: string
+                example: /api/v1/pagos/550e8400-e29b-41d4-a716-446655440000
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagoResponse'
+        '400':
+          $ref: './_shared.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '422':
+          description: >
+            `BUSINESS_RULE_VIOLATION` — the Reserva already has a Pago
+            created with another key: a Reserva is charged at most once.
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: >
+            Unhandled error, or the outcome of the charge is unknown: the
+            gateway stopped answering after the charge was sent, and asking
+            it again with the same idempotency key did not settle it. No
+            Pago is recorded. The workflow retries with the same key.
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+
+  /pagos/{id}:
+    parameters:
+      - $ref: './_shared.yaml#/components/parameters/IdParam'
+
+    get:
+      summary: Get a Pago by id
+      description: Allowed to the guest who paid (`usuarioId`), an ADMIN or a service credential.
+      operationId: getPagoById
+      tags: [Pagos]
+      responses:
+        '200':
+          description: The Pago
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagoResponse'
+        '400':
+          $ref: './_shared.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
+
+  /pagos/por-reserva/{reservaId}:
+    get:
+      summary: Get the Pago of a Reserva
+      description: >
+        Backend of the payment line in the reservation detail. Same
+        permissions as `GET /pagos/{id}`. The workflow also calls it when it
+        does not know whether a step took effect.
+      operationId: getPagoByReservaId
+      tags: [Pagos]
+      parameters:
+        - name: reservaId
+          in: path
+          required: true
+          schema:
+            $ref: './_shared.yaml#/components/schemas/UUID'
+      responses:
+        '200':
+          description: The Pago
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagoResponse'
+        '400':
+          $ref: './_shared.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '404':
+          description: No Pago is recorded for this Reserva. It does not prove that no charge was attempted.
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+
+  /pagos/{id}/reembolsos:
+    parameters:
+      - $ref: './_shared.yaml#/components/parameters/IdParam'
+
+    post:
+      summary: Refund a Pago (compensation of step `cobrar`)
+      description: >
+        **Service credential only.** Reverses an APROBADO Pago in full: there
+        is no body and no partial refund (INV-006). The Pago is never edited;
+        the Reembolso is a new ledger entry. The workflow sends the key
+        `<sagaId>:cobrar:compensar`. A `500` means no Reembolso was recorded;
+        if the workflow's retries run out, the Saga ends FAILED.
+      operationId: crearReembolso
+      tags: [Reembolsos]
+      parameters:
+        - $ref: './_shared.yaml#/components/parameters/IdempotencyKeyHeader'
+      responses:
+        '200':
+          description: >
+            The Pago was already refunded, with this key or another one: the
+            Reembolso recorded is returned and the gateway is not called
+            again. A compensation can run more than once.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReembolsoResponse'
+        '201':
+          description: Reembolso recorded
+          headers:
+            Location:
+              description: Route of the Reembolso created
+              schema:
+                type: string
+                example: /api/v1/pagos/550e8400-e29b-41d4-a716-446655440000/reembolsos/7c9e6679-7425-40de-944b-e07fc1f90ae7
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReembolsoResponse'
+        '400':
+          $ref: './_shared.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
+        '422':
+          description: "`BUSINESS_RULE_VIOLATION` — the Pago is RECHAZADO: nothing was charged, so nothing can be refunded (INV-006)."
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
+  /pagos/{id}/reembolsos/{reembolsoId}:
+    parameters:
+      - $ref: './_shared.yaml#/components/parameters/IdParam'
+      - name: reembolsoId
+        in: path
+        required: true
+        schema:
+          $ref: './_shared.yaml#/components/schemas/UUID'
+
+    get:
+      summary: Get a Reembolso by id
+      description: Same permissions as `GET /pagos/{id}`.
+      operationId: getReembolsoById
+      tags: [Reembolsos]
+      responses:
+        '200':
+          description: The Reembolso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReembolsoResponse'
+        '400':
+          $ref: './_shared.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
+
+components:
+  schemas:
+    CrearPagoRequest:
+      type: object
+      required: [reservaId, usuarioId, montoCents, moneda, metodoPago, tokenPago]
+      properties:
+        reservaId:
+          $ref: './_shared.yaml#/components/schemas/UUID'
+        usuarioId:
+          allOf:
+            - $ref: './_shared.yaml#/components/schemas/UUID'
+          description: The guest who pays. It is what lets a guest read only their own Pago.
+        montoCents:
+          type: integer
+          minimum: 1
+          description: Total of the Reserva in cents, as Booking answered it. A number with decimals is `400`.
+          example: 157500000
+        moneda:
+          type: string
+          enum: [COP]
+        metodoPago:
+          $ref: '#/components/schemas/MetodoPago'
+        tokenPago:
+          type: string
+          description: >
+            Card token created by the gateway's own library in the browser.
+            Card data never reaches this system (NFR-004). The token is
+            forwarded to the gateway and is neither stored nor logged.
+
+    MetodoPago:
+      type: string
+      description: Closed list in MVP 1 (06-data/data-dictionary.md)
+      enum: [TARJETA_CREDITO, TARJETA_DEBITO]
+
+    PagoResponse:
+      description: A Pago. It is created already resolved and never changes (AGGR-INV-004), so it has no `updatedAt`.
+      type: object
+      required: [id, reservaId, usuarioId, montoCents, moneda, metodoPago, estado, createdAt]
+      properties:
+        id:
+          $ref: './_shared.yaml#/components/schemas/UUID'
+        reservaId:
+          $ref: './_shared.yaml#/components/schemas/UUID'
+        usuarioId:
+          $ref: './_shared.yaml#/components/schemas/UUID'
+        montoCents:
+          type: integer
+          description: Amount in cents (07-api/guidelines.md, D-C8)
+          example: 157500000
+        moneda:
+          type: string
+        metodoPago:
+          $ref: '#/components/schemas/MetodoPago'
+        estado:
+          type: string
+          enum: [APROBADO, RECHAZADO]
+        transaccionId:
+          type: string
+          description: Reference of the charge in the gateway. Present only when `estado` is APROBADO.
+        motivoRechazo:
+          type: string
+          description: >
+            Present only when `estado` is RECHAZADO. The gateway's decline
+            codes are mapped onto the first three; the fourth means the
+            gateway could not be used and nothing was charged.
+          enum: [FONDOS_INSUFICIENTES, TARJETA_RECHAZADA, TARJETA_VENCIDA, PASARELA_NO_DISPONIBLE]
+        createdAt:
+          $ref: './_shared.yaml#/components/schemas/Timestamp'
+
+    ReembolsoResponse:
+      description: A Reembolso — the ledger entry that reverses one approved Pago
+      type: object
+      required: [id, pagoId, montoCents, moneda, transaccionId, createdAt]
+      properties:
+        id:
+          $ref: './_shared.yaml#/components/schemas/UUID'
+        pagoId:
+          $ref: './_shared.yaml#/components/schemas/UUID'
+        montoCents:
+          type: integer
+          description: Always the full amount of the Pago
+          example: 157500000
+        moneda:
+          type: string
+        transaccionId:
+          type: string
+          description: Reference of the refund in the gateway
+        createdAt:
+          $ref: './_shared.yaml#/components/schemas/Timestamp'
+
+  securitySchemes:
+    bearerAuth:
+      $ref: './_shared.yaml#/components/securitySchemes/bearerAuth'
