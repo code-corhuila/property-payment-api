@@ -3,6 +3,7 @@ package co.edu.corhuila.property.payment.adapter.in.http;
 import co.edu.corhuila.property.payment.adapter.in.http.ApiError.ValidationException;
 import co.edu.corhuila.property.payment.application.port.in.AccessDeniedException;
 import co.edu.corhuila.property.payment.application.port.in.NotAuthenticatedException;
+import co.edu.corhuila.property.payment.application.port.in.PagoNoEncontradoException;
 import co.edu.corhuila.property.payment.domain.model.DomainException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,6 +48,11 @@ public class ErrorHandler {
     @ExceptionHandler(NotAuthenticatedException.class)
     ResponseEntity<ApiError> notAuthenticated(NotAuthenticatedException e) {
         return respond(HttpStatus.UNAUTHORIZED, ApiError.of(ApiError.UNAUTHORIZED, e.getMessage()));
+    }
+
+    @ExceptionHandler(PagoNoEncontradoException.class)
+    ResponseEntity<ApiError> notFound(PagoNoEncontradoException e) {
+        return respond(HttpStatus.NOT_FOUND, ApiError.of(ApiError.NOT_FOUND, e.getMessage()));
     }
 
     @ExceptionHandler(AccessDeniedException.class)
