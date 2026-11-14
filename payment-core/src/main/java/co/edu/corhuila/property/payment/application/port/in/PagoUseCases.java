@@ -2,6 +2,7 @@ package co.edu.corhuila.property.payment.application.port.in;
 
 import co.edu.corhuila.property.payment.domain.model.MetodoPago;
 import co.edu.corhuila.property.payment.domain.model.Pago;
+import co.edu.corhuila.property.payment.domain.model.Reembolso;
 import java.util.UUID;
 
 /** What the service offers about Pagos. Inbound adapters depend on these interfaces only. */
@@ -28,5 +29,13 @@ public final class PagoUseCases {
 
     public interface Cobrar {
         Cobro cobrar(CobrarCommand command);
+    }
+
+    /** created is false when the Pago was already refunded, with this key or another. */
+    public record Reversion(Reembolso reembolso, boolean created) { }
+
+    /** E-21, compensation of step cobrar. */
+    public interface Reembolsar {
+        Reversion reembolsar(Caller caller, UUID pagoId, String idempotencyKey);
     }
 }
